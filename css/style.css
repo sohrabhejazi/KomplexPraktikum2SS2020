@@ -1,0 +1,133 @@
+.axis {
+    font-size: 15px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+.btn-add-diagram {
+    width: 28px;
+    height: 28px;
+    line-height: 14px;
+    vertical-align: baseline;
+}
+
+.headSettingsDiagram {
+    float: right;
+}
+
+.diagramSvgElement {
+    overflow-x: auto;
+    width: 100%;
+}
+
+.diagramRow {
+    height: 500px;
+    border: none;
+}
+
+.check-color-symbol {
+    border-radius: 7px;
+    height: 14px;
+    width: 14px;
+    margin-right: 5px;
+    display: inline-block;
+}
+
+.check-color-symbol-rect {
+    height: 14px;
+    width: 14px;
+    margin-right: 5px;
+    display: inline-block;
+}
+
+.check-group {
+    margin-left: 15px !important;
+}
+
+.headOfSelectCol {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.headOfCheckDiagram {
+    display: inline;
+}
+
+.hoverTable {
+    border-collapse: collapse;
+}
+
+.hoverTable table, .hoverTable th, .hoverTable td {
+    border: 1px solid black;
+}
+
+.selectDiagramCol {
+    height: inherit;
+    margin-left: 15px;
+    overflow: hidden;
+    overflow-y: auto;
+    width: 300px;
+    overflow-x: auto;
+}
+
+.select-svg {
+    vertical-align: baseline;
+    margin-right: 5px;
+}
+
+.showResourceDataPoints label {
+    margin: 0;
+}
+
+.tooltip {
+    background-color: white;
+    border: solid;
+    border-width: 2px;
+    border-radius: 5px;
+    padding: 5px;
+    position: absolute;
+    width: fit-content;
+    z-index: 1000;
+}
+
+.valueLines, .range {
+    fill: none;
+    stroke-width: 1.5;
+}
+
+.valueMarkercircle {
+    r: 5;
+    stroke-width: 2;
+}
+
+.valueMarkerrect {
+    width: 10px;
+    height: 10px;
+    stroke-width: 2;
+    fill: white;
+}
+
+.resourceDatePoints {
+    r: 8;
+    stroke-width: 1;
+}
+
+.rectPltElement {
+    stroke-width: 1;
+    stroke: black;
+}
+
+/* diagram-elements for date-range-slider */
+.svgFrameSlider {
+    border: 1px solid black;
+    height: 20px;
+}
+
+.brush {
+    height: 20px;
+}
+
+.selection {
+    stroke: red;
+    stroke-width: 2px;
+    fill: None;
+}

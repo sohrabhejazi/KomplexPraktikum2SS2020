@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Visualisierung</title>
+
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.5.1.js"/>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js" integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI" crossorigin="anonymous"></script>
+    <script src="https://d3js.org/d3.v4.js"></script>
+
+    <script src="build/fhir-client.js"></script>
+    <script src="app.js"></script>
+    <script src="js/styling.js"></script>
+    <script src="js/filtering.js"></script>
+    <script src="js/diagram_config.js"></script>
+    <script src="js/diagram_components.js"></script>
+    <script src="js/diagram_handling.js"></script>
+    <script src="js/diagram.js"></script>
+
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+    <link rel="stylesheet" type="text/css" href="css/tooltip.css">
+</head>
+<body>
+    <div id="tooltip-root"></div>
+    <div class="container border mt-3 mb-3">
+        <h4 class="text-center mt-1">Patientenübersicht</h4>
+        <div class="container" id="patient">
+            <div class="row">
+                <div class="col-sm-auto">
+                    <img src="images/user.svg">
+                </div>
+                <div class="col-sm-auto">
+                    Name:<br/>
+                    Geschlecht:<br/>
+                    Geburtstag:<br/>
+                    Adresse:
+                </div>
+                <div class="col-sm-auto justify-content-start">
+                    <span id="patientName"></span> <br/>
+                    <span id="patientGender"></span> <br/>
+                    <span id="patientAge"></span> <br/>
+                    <span id="patientAddress"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="container mt-3" id="diagramContainer">
+        </div>
+
+        <div class="container border mt-3 mb-3" id="encounterSelection">
+            <h6>Auswahl Behandlungsfälle</h6>
+        </div>
+
+        <div class="container mt-3 mb-3">
+            <h6>Auswahl Tabellen</h6>
+            <input type="checkbox" id="conditionFilter" checked onclick="conditionContentFilter()"> Diagnosen
+            <input type="checkbox" id="observationFilter" checked onclick="observationContentFilter()"> Beobachtungen
+            <input type="checkbox" id="medicationFilter" checked onclick="medicationContentFilter()"> Medikamente
+            <input type="checkbox" id="labObservationFilter" checked onclick="labObservationContentFilter()"> Laboruntersuchungen
+            <input type="checkbox" id="antibiogramFilter" checked onclick="antibiogramContentFilter()"> Antibiogramme
+        </div>
+
+        <div class="container border mt-3 mb-3" id="conditionContent">
+            <h4>Diagnosen</h4>
+        </div>
+
+        <div class="container border mt-3 mb-3" id="observationContent">
+            <h4>Beobachtungen</h4>
+        </div>
+
+        <div class="container border mt-3 mb-3" id="medicationContent">
+            <h4>Medikamente</h4>
+        </div>
+
+        <div class="container border mt-3 mb-3" id="labObservationContent">
+            <h4>Laboruntersuchungen</h4>
+        </div>
+
+        <div class="container border mt-3 mb-3" id="antibiogramContent">
+            <h4>Antibiogramme</h4>
+        </div>
+    </div>
+
+    <!-- TEMPLATES -->
+
+    <template id="encounterEntry">
+        <div class="encounterStart" style="display: inline;"></div>
+        <div class="encounterEnd" style="display: inline;"></div>
+    </template>
+
+    <template id="conditionTable">
+        <div class="table-responsive">
+            <table class="table border">
+                <thead class="thead-dark">
+                    <th scope="col">Typ</th>
+                    <th scope="col">Bezeichnung</th>
+                    <th scope="col">ICD-Kode</th>
+                    <th scope="col">Datum</th>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </template>
+
+    <template id="conditionTableEntry">
+        <tr class="condition">
+            <td class="cond_rank"></td>
+            <td class="cond_display"></td>
+            <td class="cond_code"></td>
+            <td class="cond_date"></td>
+        </tr>
+    </template>
+
+    <template id="observationTable">
+        <div class="table-responsive">
+            <table class="table border">
+                <thead class="thead-dark">
+                    <th scope="col">Bezeichnung</th>
+                    <th scope="col">Wert</th>
+                    <th scope="col">LOINC-Kode</th>
+                    <th scope="col">Datum</th>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </template>
+
+    <template id="observationTableEntry">
+        <tr class="observation">
+            <td class="obs_display"></td>
+            <td class="obs_value"></td>
+            <td class="obs_code"></td>
+            <td class="obs_date"></td>
+        </tr>
+    </template>
+
+    <template id="medicationTable">
+        <div class="table-responsive">
+            <table class="table border">
+                <thead class="thead-dark">
+                    <th scope="col">Bezeichnung</th>
+                    <th scope="col">Dosis</th>
+                    <th scope="col">Intervall (Stunden)</th>
+                    <th scope="col">Dauer (Tage)</th>
+                    <th scope="col">Anwendung</th>
+                    <th scope="col">ATC-Kode</th>
+                    <th scope="col">Datum</th>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </template>
+
+    <template id="medicationTableEntry">
+        <tr class="medication">
+            <td class="med_display"></td>
+            <td class="med_dose"></td>
+            <td class="med_interval"></td>
+            <td class="med_duration"></td>
+            <td class="med_application"></td>
+            <td class="med_code"></td>
+            <td class="med_date"></td>
+        </tr>
+    </template>
+
+    <template id="labObservationTable">
+        <div class="table-responsive">
+            <table class="table border">
+                <thead class="thead-dark">
+                    <th scope="col">Bezeichnung</th>
+                    <th scope="col">Wert</th>
+                    <th scope="col">min-Normwert</th>
+                    <th scope="col">max-Normwert</th>
+                    <th scope="col">LOINC-Kode</th>
+                    <th scope="col">Datum</th>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </template>
+
+    <template id="labObservationTableEntry">
+        <tr class="labObservation">
+            <td class="labObs_display"></td>
+            <td class="labObs_value"></td>
+            <td class="labObs_low"></td>
+            <td class="labObs_high"></td>
+            <td class="labObs_code"></td>
+            <td class="labObs_date"></td>
+        </tr>
+    </template>
+
+    <template id="antibiogramTable">
+        <div class="table-responsive" style="overflow: visible;">
+            <table class="table border">
+                <thead class="thead-dark">
+                    <th scope="col">Prüfkörper</th>
+                    <th scope="col">SNOMED-CT-Kode</th>
+                    <th scope="col">Datum</th>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </template>
+
+    <template id="antibiogramTableEntry">
+        <tr class="antibiogram">
+            <td class="abg_display"></td>
+            <td class="abg_code"></td>
+            <td class="abg_date"></td>
+        </tr>
+    </template>
+
+    <template id="diagnosticsTable">
+        <table class="table border">
+            <thead>
+                <th scope="col">Bezeichnung</th>
+                <th scope="col">LOINC-Kode</th>
+                <th scope="col">Ergebnis</th>
+                <th scope="col">Resistenzen</th>
+                <th scope="col">Datum</th>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </template>
+
+    <template id="diagnosticsTableEntry">
+        <tr class="diagnostic">
+            <td class="dia_display"></td>
+            <td class="dia_code"></td>
+            <td class="dia_result"></td>
+            <td class="dia_resistances"></td>
+            <td class="dia_date"></td>
+        </tr>
+    </template>
+
+    <template id="encounterEntrySelection">
+        <input type="checkbox" checked>
+    </template>
+
+    <template id="diagramTemplate">
+        <div class="row diagramRow">
+            <div class="col-md col-8 border">
+                <div class="diagramElement" id="diagram"></div>
+            </div>
+            <div class="col-sm-auto col-4 border justify-content-end selectDiagramCol" id="selectDiagramCol">
+                <div class="headOfSelectCol border-bottom">
+                    <h6 class="headOfCheckDiagram">Optionen</h6>
+                    <div class="headSettingsDiagram">
+                        <select class="selectpicker" id="diagramCodeSelectPicker">
+                            <option selected>Bezeichner</option>
+                            <option>Codes</option>
+                        </select>
+                        <button type="button" class="btn btn-success btn-sm btn-add-diagram" data-toggle="tooltip" data-placement="top" title="neues Diagramm" onclick="addDiagram()">+</button>
+                        <button type="button" class="btn btn-danger btn-sm btn-add-diagram btn-remove-diagram" data-toggle="tooltip" data-placement="top" title="Diagramm entfernen">-</button>
+                    </div>
+                </div>
+                <div class="dateSlider">
+                    von <span class="startDateSlider" id="startDateSlider"></span> bis <span class="endDateSlider" id="endDateSlider"></span>
+                    <div class="svgFrameSlider" id="svgFrameSlider"></div>
+                </div>
+                <div class="showResourceDataPoints">
+                    <input type="checkbox" id="showResourceCheckbox" name="showRangeCheckbox">
+                    <label for="showResourceCheckbox"> nur Diagrammwerte anzeigen</label>
+                </div>
+                <div class="showRangeLimits">
+                    <input type="checkbox" id="showRangeCheckbox" name="showRangeCheckbox">
+                    <label for="showRangeCheckbox"> Normbereich anzeigen</label><br>
+                </div>
+            </div>
+        </div>
+    </template>
+</body>
+</html>

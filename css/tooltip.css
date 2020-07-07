@@ -1,0 +1,48 @@
+/* Tooltip container */
+.resistancetooltip {
+  position: relative;
+  display: inline-block;
+}
+
+/* Tooltip text */
+.resistancetooltip .tooltiptext {
+  visibility: hidden;
+  width: auto;
+  background-color: #FAFAFA;
+  color: #000;
+  text-align: center;
+  border-radius: 6px;
+  border-color: #000;
+
+  /* Position the tooltip text */
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -60px;
+
+  /* Fade in tooltip */
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.resistancetooltip .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 17%;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #555 transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.resistancetooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
+}
+
+.resistancetooltip .table {
+  margin-bottom: 0px;
+}
