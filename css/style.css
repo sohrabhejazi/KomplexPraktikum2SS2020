@@ -14,9 +14,13 @@
     float: right;
 }
 
-.diagramSvgElement {
+.diagramElement {
     overflow-x: auto;
+}
+
+.diagramSvgElement {
     width: 100%;
+    overflow-x: auto;
 }
 
 .diagramRow {

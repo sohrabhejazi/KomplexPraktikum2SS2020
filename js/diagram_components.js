@@ -73,16 +73,14 @@ function getHoverText(elemClass, d, primary = true) {  // if not primary, the re
             if (primary) {  // for hovering over one Antibiogramme-Resistenzen-Point, showing all abgObservations for that date: their Antibiotica + Result (R/S) + Date
                 hover = d["values"].length === 1 ? "<b>Resistenz zu einem Antibiogramm-Ergebnis am " : "<b>Resistenzen zu Ergebnissen von Antibiogrammen am ";
                 hover += d["key"] + "</b><br><table class='hoverTable'><tr><th>Antibiotikum</th><th>Ergebnis</th><th>Datum Antibiogramm-Ergebnis</th></tr>"
-                let result;
                 for (let i = 0; i < d["values"].length; i++) {
-                    result = d["values"][i].interpretation === "R" ? "resistent" : "empfänglich";
-                    hover += "<tr><td>" + d["values"][i].code + "</td><td>" + result + "</td><td>" + data["mibiObservations"][d["values"][i]["mibiObservation"]]["date"] + "</td></tr>";
+                    hover += "<tr><td>" + d["values"][i].code + "</td><td>" + d["values"][i].interpretation + "</td><td>" + data["mibiObservations"][d["values"][i]["mibiObservation"]]["date"] + "</td></tr>";
                 }
                 hover += "</table>";
                 return hover;
             } else {  // returns [alphabetic-sort-Array-of-Resistances, alphabetic-sort-Array-of-Non-Resistances]
-                let resis = d.filter((d => d.interpretation === "R")).reduce((r, i) => r.concat(i.code), []);
-                let nonResis = d.filter((d => d.interpretation === "S")).reduce((r, i) => r.concat(i.code), []);
+                let resis = d.filter((d => d.interpretation === "resistent")).reduce((r, i) => r.concat(i.code), []);
+                let nonResis = d.filter((d => d.interpretation === "anfällig")).reduce((r, i) => r.concat(i.code), []);
                 return [resis.sort(), nonResis.sort()]
             }
         case "code":
@@ -122,7 +120,7 @@ function getHoverText(elemClass, d, primary = true) {  // if not primary, the re
                 let labObs;
                 for (let i = 0; i < labIds.length; i++) {
                     labObs = data["labObservations"][labIds[i]];
-                    hover += "<tr><td>" + labObs.display + " (" +  labObs.code + " )</td><td>";
+                    hover += "<tr><td>" + labObs.display + " (" + labObs.code + " )</td><td>";
                     hover += labObs["value"] + " " + data["values"][labObs.range]["unit"] + "</td><td>" + labObs.date + "</td></tr>";
                 }
                 hover += "</table>";
@@ -133,7 +131,7 @@ function getHoverText(elemClass, d, primary = true) {  // if not primary, the re
             hover = "<b>Medikament " + d["display"] + " (" + d["code"] + ")</b><br>";
             hover += "Dosis: " + d["dose"] + "<br>ab " + d["date"] + "<br>Anwendungsdauer: " + d["duration_in_d"] + " Tage<br>";
             hover += "Anwendungsintervall: " + d["interval_h"] + " Stunden<br>Anwendungsform: " + apform + "<br>";
-            hover += "<br>" + getHoverText("encounter", data["encounter"][d["encounter"]], primary=false);
+            hover += "<br>" + getHoverText("encounter", data["encounter"][d["encounter"]], primary = false);
             return hover;
         case "mibiObservations":
             if (primary) { // for hovering over one Antibiogramme-Ergebnis-Point, showing all mibiObservations for that date: their Test + Ergebnis + Antibiogramm-Anforderungs-Datum

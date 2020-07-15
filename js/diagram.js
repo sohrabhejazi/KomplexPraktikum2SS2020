@@ -38,6 +38,7 @@ class Diagram {
             "mibiRequest": this.plotCircleSeries("mibiRequest"),
             "medication": this.plotMedication()
         };
+        this.encounters = Object.keys(data["encounter"]);
         this.appendLines();  // appends path-Lines, rangeLimits and marker of lines to pltResources
 
         //initial view: don't show any line or range limit
@@ -166,7 +167,7 @@ class Diagram {
                 return colorFunc(d.key);
             })
             .attr("id", function (d) {
-                return idPrefix + id_sep + diaId + id_sep+ d.key;
+                return idPrefix + id_sep + diaId + id_sep + d.key;
             })
             .attr("d", function (d) {
                 return d3.line()
@@ -180,6 +181,24 @@ class Diagram {
             });
     }
 
+    appendMarkers(markerData, valueKey) {
+        const y = this.y, colorMapping = this.colorMapping;
+        let yValue = function (d) {
+            return y(d.value);
+        };
+        let stroke = function (d) {
+            return colorMapping[d.code];
+        };
+        let fill = function (d) {
+            let range = data["values"][d.range]
+            if (!("low" in range) && !("high" in range)) return "none";
+            let notTooLow = "low" in range && range["low"] < d.value;
+            let notTooHigh = "high" in range && range["high"] > d.value;
+            return notTooLow && notTooHigh ? "white" : stroke(d);
+        }
+        return this.plotCircles(markerData, "date", yValue, "points", "code", fill, value_groups[valueKey]["marker"], "valueMarker" + value_groups[valueKey]["marker"], stroke);
+    }
+
     appendLines() {
         const color = d3.scaleOrdinal()
             .domain(this.colorMapping["codeList"])
@@ -188,24 +207,10 @@ class Diagram {
         for (let key = 0; key < rangeLimits.length; key++) {
             rangeRef[rangeLimits[key]] = [];
         }
-        const y = this.y, colorMapping = this.colorMapping;
         for (let key in value_groups) {
             const diaData = value_groups[key]["data"];
             this.pltResources["lines"][key] = this.appendLineGroup("valueLines", diaData, color, "path");
-            let yValue = function (d) {
-                return y(d.value);
-            };
-            let stroke = function (d) {
-                return colorMapping[d.code];
-            };
-            let fill = function (d) {
-                let range = data["values"][d.range]
-                if (!("low" in range) && !("high" in range)) return "none";
-                let notTooLow = "low" in range && range["low"] < d.value;
-                let notTooHigh = "high" in range && range["high"] > d.value;
-                return notTooLow && notTooHigh ? "white" : stroke(d);
-            }
-            this.pltResources["points"][key] = this.plotCircles(this.pltData[key], "date", yValue, "points", "code", fill, value_groups[key]["marker"], "valueMarker" + value_groups[key]["marker"], stroke);
+            this.pltResources["points"][key] = this.appendMarkers(this.pltData[key], key);
             // now get low/high range for every observation code (if available) and create+store line elements
             const [roundminDate, roundmaxDate] = this.getOffsetOuterDate();
             for (let elem = 0; elem < diaData.length; elem++) {
@@ -253,7 +258,7 @@ class Diagram {
 
     rescaleX(min, max) {
         this.x.domain([min, max])
-        this.svg.selectAll("g .x").transition()
+        this.svg.selectAll("g .x").transition().duration(0)
             .call(d3.axisBottom(this.x)
                 .tickFormat(d3.timeFormat("%d.%m.%Y"))
                 .ticks(Math.ceil(this.width / 160)));
@@ -262,16 +267,16 @@ class Diagram {
             if (key === "encounter" || key === "medication") {
                 let colStartName = date_columns[key].indexOf("start") >= 0 ? "start" : "date";
                 this.pltResources[key]
-                    .transition()
+                    .transition().duration(0)
                     .attr("x", function (d) {
                         return x(formatDate(d[colStartName]));
                     })
-                    .attr("width", function(d) {
+                    .attr("width", function (d) {
                         return x(formatDate(d["end"])) - x(formatDate(d[colStartName]));
                     });
             } else if (key === "lines") {
                 for (let subkey in this.pltResources[key]) {
-                    this.pltResources[key][subkey].transition()
+                    this.pltResources[key][subkey].transition().duration(0)
                         .attr("d", function (d) {
                             return d3.line()
                                 .x(function (d) {
@@ -283,16 +288,16 @@ class Diagram {
                         });
                 }
             } else if (key === "points") {
-                this.pltResources[key]["labObservations"].transition()
+                this.pltResources[key]["labObservations"].transition().duration(0)
                     .attr("cx", function (d) {
                         return x(formatDate(d["date"]));
                     });
-                this.pltResources[key]["observations"].transition()
+                this.pltResources[key]["observations"].transition().duration(0)
                     .attr("x", function (d) {
                         return x(formatDate(d["date"]));
                     });
             } else {
-                this.pltResources[key].transition()
+                this.pltResources[key].transition().duration(0)
                     .attr("cx", function (d) {
                         return x(formatDate(d["key"]));
                     });
@@ -346,7 +351,13 @@ class Diagram {
         this.svg.selectAll("g .x")
             .transition()
             .attr("transform", "translate(0," + this.y(min) + ")")  // move to y-min
-        const x = this.x, y = this.y;
+        const x = this.x, y = this.y, enc = this.encounters;
+
+        function encOpacity(d) {
+            return enc.indexOf(d) >= 0 ? 1 : 0;
+        }
+
+        const selectedCodes = getSelectedCodeElements(this.diagramDivId);
         for (let key in this.pltResources) {  // translate all pltResources
             if (!(this.align_data.length) && align_data.indexOf(key) >= 0) {
                 this.pltResources[key].style("opacity", 0);
@@ -354,10 +365,13 @@ class Diagram {
             }
             if (key === "encounter") {
                 this.pltResources[key].transition()
-                    .attr("y", this.y(this.getYScalePosition(key)) - 5);
+                    .attr("y", this.y(this.getYScalePosition(key)) - 5)
+                    .style("opacity", function (d) {
+                        return encOpacity(d.id)
+                    });
             } else if (key === "lines") {
                 for (let subkey in this.pltResources[key]) {
-                    this.pltResources[key][subkey].transition()
+                    this.pltResources[key][subkey].transition().duration(0)
                         .attr("d", function (d) {
                             return d3.line()
                                 .x(function (d) {
@@ -369,39 +383,98 @@ class Diagram {
                         });
                 }
             } else if (key === "points") {
-                this.pltResources[key]["labObservations"].transition()
+                this.pltResources[key]["labObservations"].transition().duration(0)
                     .attr("cy", function (d) {
                         return y(d.value);
                     })
-                this.pltResources[key]["observations"].transition()
+                    .style("opacity", function (d) {
+                        return selectedCodes.indexOf(d.code) >= 0 ? 1 : 0
+                    });
+                this.pltResources[key]["observations"].transition().duration(0)
                     .attr("y", function (d) {
                         return y(d.value) - 2;
                     })
-            } else if (key === "medication"){
+                    .style("opacity", function (d) {
+                        return selectedCodes.indexOf(d.code) >= 0 ? 1 : 0
+                    });
+            } else if (key === "medication") {
                 let yMed = this.y(this.getYScalePosition(key));
                 this.pltResources[key].transition()
                     .attr("y", function (d) {
-                        return yMed -7 + 15 * d.line;
+                        return yMed - 7 + 15 * d.line;
+                    })
+                    .style("opacity", function (d) {
+                        return encOpacity(d.encounter)
                     });
             } else {
                 this.pltResources[key].transition()
-                    .attr("cy", this.y(this.getYScalePosition(key)));
+                    .attr("cy", this.y(this.getYScalePosition(key)))
+                    .style("opacity", function (d) {
+                        for (let i = 0; i < d["values"].length; i++) {
+                            if (encOpacity(d["values"][i].encounter)) return 1;
+                        }
+                        return 0;
+                    });
             }
         }
     }
 
     setAlignData(aData) {
-        if (aData.length) {
-            for (let key in this.pltResources) {
-                if (aData.indexOf(key) >= 0) this.pltResources[key].style("opacity", 1);
-            }
-        }
         this.align_data = aData;
         this.rescaleY();
+        if (aData.length) this.showEncounters();
     }
 
     getYScalePosition(entry) {
         return this.min - (this.align_data.indexOf(entry) + 1) * this.scale_factor;
+    }
+
+    changeEncounters(encounters) {
+        this.encounters = encounters;
+        this.showEncounters();
+    }
+
+    showEncounters() {
+        let y = this.y, x = this.x, enc = this.encounters;
+
+        function encOpacity(d) {
+            return enc.indexOf(d) >= 0 ? 1 : 0;
+        }
+
+        let selectedCodes = getSelectedCodeElements(this.diagramDivId);
+        let showPartPath = [];
+        for (let key in this.pltResources) {
+            if (!(["lines", "points"].indexOf(key) >= 0)) continue;
+            switch (key) {
+                case "lines":
+                    for (let subkey in value_groups) {
+                        showPartPath = []
+                        for (let i = 0; i < value_groups[subkey]["data"].length; i++) {
+                            let pathKey = [];
+                            let d = value_groups[subkey]["data"][i];
+                            for (let j = 0; j < d["values"].length; j++) {
+                                if (encOpacity(d["values"][j].encounter)) pathKey.push(d["values"][j]);
+                            }
+                            showPartPath.push({key: d["key"], values: pathKey})
+                        }
+                        this.pltResources[key][subkey]
+                            .data(showPartPath)
+                            .enter();
+                    }
+                    break;
+                case "points":
+                    for (let subkey in value_groups) {
+                        showPartPath = []
+                        for (let i = 0; i < this.pltData[subkey].length; i++) {
+                            if (encOpacity(this.pltData[subkey][i].encounter)) showPartPath.push(this.pltData[subkey][i]);
+                        }
+                        this.pltResources[key][subkey].remove();
+                        this.pltResources[key][subkey] = this.appendMarkers(showPartPath, subkey);
+                    }
+                    break;
+            }
+            this.rescaleY();
+        }
     }
 
     plotEncounters() {
@@ -430,7 +503,7 @@ class Diagram {
     }
 
     plotCircles(allData, xDateKey, yValues, idPrefix, idSuffixKey, colorFunc = pltColors["secondary"], elemType = "circle", className = "resourceDatePoints", stroke = "black") {
-        const x = this.x, diaId = this.diagramDivId;;
+        const x = this.x, diaId = this.diagramDivId;
         const markerStyle = {
             "circle": {xName: "cx", yName: "cy", xOffset: 0},
             "rect": {xName: "x", yName: "y", xOffset: 5}
@@ -491,7 +564,7 @@ class Diagram {
     }
 
     plotMedication() {
-        const x = this.x, y = this.y, yMed = this.y(this.getYScalePosition("medication")), diaId = this.diagramDivId;;
+        const x = this.x, y = this.y, yMed = this.y(this.getYScalePosition("medication")), diaId = this.diagramDivId;
         const medHeight = 12;
         return this.scatter.append("g")
             .selectAll("dot")
@@ -531,6 +604,7 @@ class Diagram {
             }
             return parallels;
         }
+
         if (!this.pltData["medication"].length) return 0;
         let medication = [];
         let colorCodes = new Set();

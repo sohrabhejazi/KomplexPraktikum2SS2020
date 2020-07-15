@@ -41,6 +41,12 @@ function diagramHandling(diagram) {
     $(document).on("click", "#" + diagram.diagramDivId + "showResourceCheckbox", function () {  // show/hide resource data points
         $(this).is(":checked") ? diagram.setAlignData([]) : diagram.setAlignData(align_data);
     });
+    $(document).on("click", "#encounterSelection input", function () {
+        let selectedEncounters = $(this).parent().find("input:checkbox:checked").map(function () {
+            return $(this).attr("id").split("encounterSelection")[1];
+        }).get();
+        diagram.changeEncounters(selectedEncounters);
+    });
 }
 
 //helper functions for creating a diagram
@@ -93,7 +99,7 @@ function createCheckboxList(pltData, diagramPrefix) {
         value_groups[key]["data"] = nestData(pltData[key]);
         value_groups[key]["codes"] = value_groups[key]["data"].map(e => e["key"]);
         value_groups[key]["displayCodes"] = [];
-        for (let j = 0; j < value_groups[key]["codes"].length; j++) {  // TODO wenn kein display oder code vorhanden, siehe 2 Zeilen drüber, nehme unknown...
+        for (let j = 0; j < value_groups[key]["codes"].length; j++) {
             value_groups[key]["displayCodes"].push(pltData[key].filter(e => e.code === value_groups[key]["codes"][j])[0]["display"]);
         }
         colorElem = colorElem.concat(value_groups[key]["codes"]);
@@ -138,6 +144,8 @@ function getCheckboxGroupHtml(divClass, value, parentNode = false, diagramPrefix
     return result;
 }
 
+var beFirstOne = true;
+
 function addDiagram() {
     let div = document.querySelector("#diagramContainer");
     let newId = !$(div).children().length ? "diagram0" : "diagram" + (parseInt($(div).find(":last-child").find(".diagramElement").attr("id").split("diagram")[1]) + 1);
@@ -152,6 +160,16 @@ function addDiagram() {
     $(div).find("#startDateSlider").attr("id", newId + "startDateSlider");
     $(div).find("#endDateSlider").attr("id", newId + "endDateSlider");
     const diagram = new Diagram(getPreparedData(data), newId);
+    let selectedEncounters;
+    if (beFirstOne) {
+        selectedEncounters = Object.keys(data["encounter"]);
+        beFirstOne = false;
+    } else {
+        selectedEncounters = $("#encounterSelection").find("input:checkbox:checked").map(function () {
+            return $(this).attr("id").split("encounterSelection")[1];
+        }).get();
+    }
+    diagram.changeEncounters(selectedEncounters);
     diagramHandling(diagram);
 }
 

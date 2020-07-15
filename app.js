@@ -4,24 +4,47 @@ function get2D(number) {  // function especially for date-representation -> gett
     return ("0" + number).slice(-2)
 }
 
-function getDateRepresentation(d, withZOff=true) {  // dates in FHIR Ressources are stored with "+Z.."
+function getDateRepresentation(d, withZOff = true) {  // dates in FHIR Ressources are stored with "+Z.."
     if (withZOff) d = new Date(d.split("+")[0]);
     return get2D(d.getDate()) + "." + get2D(d.getMonth() + 1) + "." + d.getFullYear() + " " + get2D(d.getHours()) + ":" + get2D(d.getMinutes()) + ":" + get2D(d.getSeconds());
 }
 
 function getPatient(patient) {
     data["patient"] = {}
-    data["patient"]["name"] = patient.name[0].family + ", " + patient.name[0].given.join(" ");
-    var gender = {"female": "weiblich", "male": "männlich", "other": "divers"}
-    data["patient"]["gender"] = gender[patient.gender];
+    if ("name" in patient && patient.name.length) {
+        let familyName = patient.name[0].family ? patient.name[0].family : "";
+        let firstName = patient.name[0].given ? patient.name[0].given.join(" ") : "";
+        data["patient"]["name"] = familyName + (familyName !== "" ? ", " : "") + firstName;
+    } else {
+        data["patient"]["name"] = "";
+    }
+    let gender = {"female": "weiblich", "male": "männlich", "other": "divers"};
+    data["patient"]["gender"] = patient?.gender in gender ? gender[patient.gender] : "";
 
-    var d = new Date(patient.birthDate)
-    var patientAge = ("0" + d.getDate()).slice(-2) + "." + ("0" + (d.getMonth() + 1)).slice(-2) + "." + d.getFullYear();
-    var ageDate = Math.abs(new Date(Date.now() - d.getTime()).getFullYear() - 1970);
-    data["patient"]["age"] = patientAge + ", " + ageDate + " Jahre";
+    var d = (patient?.birthDate && Date.parse(patient.birthDate)) ? new Date(patient.birthDate) : "";
+    if (d !== "") {
+        var patientAge = ("0" + d.getDate()).slice(-2) + "." + ("0" + (d.getMonth() + 1)).slice(-2) + "." + d.getFullYear();
+        var ageDate = Math.abs(new Date(Date.now() - d.getTime()).getFullYear() - 1970);
+        data["patient"]["age"] = patientAge + ", " + ageDate + " Jahre";
+    } else {
+        data["patient"]["age"] = "";
+    }
+    if ("address" in patient && patient.address.length) {
+        let street = patient.address[0].line ? patient.address[0].line.join(", ") : "";
+        let postal = patient.address[0].postalCode ? patient.address[0].postalCode : "";
+        let city = patient.address[0].city ? patient.address[0].city : "";
+        data["patient"]["address"] = street + (street !== "" ? ", " : "") + postal + " " + city;
+    } else {
+        data["patient"]["address"] = "";
+    }
+}
 
-    var street = "line" in patient.address[0] ? patient.address[0].line.join(", ") : "";
-    data["patient"]["address"] = street + ", " + patient.address[0].postalCode + " " + patient.address[0].city;
+function checkNotNullNotEmpty(obj) {
+    return !!obj && obj !== "";
+}
+
+function hasCoding(code) {
+    return "coding" in code && code.coding.length;
 }
 
 function getEncountersAndConditions(encounters, conditions) {
@@ -29,41 +52,51 @@ function getEncountersAndConditions(encounters, conditions) {
     data["conditions"] = {};
     var cond_id, cond_resource;
     var rank = {"1": "primär", "2": "sekundär"};
-    encounters.forEach(function (encounter) {
-        data["encounter"][encounter.id] = {
-            "id": encounter.id,
-            "start": getDateRepresentation(encounter.period.start),
-            "end": getDateRepresentation(encounter.period.end)
-        };
-        for (var cKey in encounter.diagnosis) {
-            cond_id = encounter.diagnosis[cKey].condition.reference.split("/")[1];
-            cond_resource = conditions.find(x => x.id === cond_id);
-            data["conditions"][cond_id] = {
-                "code": cond_resource.code.coding[0].code,
-                "system": cond_resource.code.coding[0].system,
-                "version": cond_resource.code.coding[0].version,
-                "display": cond_resource.code.coding[0].display,
-                "date": getDateRepresentation(cond_resource.recordedDate),
-                "encounter": encounter.id,
-                "rank": rank[encounter.diagnosis[cKey].rank]
+    encounters.forEach(function (encounter) {  // require an id for an encounter and valid start and end date
+        if (checkNotNullNotEmpty(encounter?.id) && encounter.period && Date.parse(encounter.period.start) && Date.parse(encounter.period.end)) {
+            data["encounter"][encounter.id] = {
+                "id": encounter.id,
+                "start": getDateRepresentation(encounter.period.start),
+                "end": getDateRepresentation(encounter.period.end)
             };
+            for (var cKey in encounter.diagnosis) {
+                cond_id = encounter.diagnosis[cKey]?.condition?.reference?.split("/")[1];
+                if (!cond_id) continue;
+                cond_resource = conditions.find(x => x.id === cond_id);
+                if (Date.parse(cond_resource?.recordedDate) && hasCoding(cond_resource.code) && (cond_resource.code.coding[0].display || cond_resource.code.coding[0].code)) {  // require a valid date and display or code for coding
+                    data["conditions"][cond_id] = {
+                        "code": "code" in cond_resource.code.coding[0] ? cond_resource.code.coding[0].code : "",
+                        "system": "system" in cond_resource.code.coding[0] ? cond_resource.code.coding[0].system : "",
+                        "version": "version" in cond_resource.code.coding[0] ? cond_resource.code.coding[0].version : "",
+                        "display": "display" in cond_resource.code.coding[0] ? cond_resource.code.coding[0].display : "",
+                        "date": getDateRepresentation(cond_resource.recordedDate),
+                        "encounter": encounter.id,
+                        "rank": (encounter.diagnosis[cKey].rank in rank) ? rank[encounter.diagnosis[cKey].rank] : ""
+                    };
+                }
+            }
         }
     });
+    return data["encounter"];
 }
 
-function getServiceRequests(requests) {
+function getServiceRequests(encounters, requests) {
     data["labRequest"] = {};
     data["mibiRequest"] = {};
     var req_class;
     requests.forEach(function (request) {
-        req_class = ("specimen" in request && request["specimen"].length) ? "mibiRequest" : "labRequest";
-        data[req_class][request.id] = {
-            "id": request.id,
-            "encounter": request.encounter.reference.split("/")[1],
-            "authoredOn": getDateRepresentation(request.authoredOn)
-        }
-        if (req_class === "mibiRequest") {
-            data[req_class][request.id]["specimen"] = request.specimen[0].reference.split("/")[1];
+        let encounter = request?.encounter?.reference?.split("/")[1];
+        // require existing encounter, intent order, valid date and valid id
+        if (encounter in encounters && request.intent === "order" && checkNotNullNotEmpty(request.id) && Date.parse(request.authoredOn)) {
+            req_class = ("specimen" in request && request["specimen"].length) ? "mibiRequest" : "labRequest";
+            data[req_class][request.id] = {
+                "id": request.id,
+                "encounter": encounter,
+                "authoredOn": getDateRepresentation(request.authoredOn)
+            }
+            if (req_class === "mibiRequest" && "reference" in request.specimen[0] && request.specimen[0].reference != null && request.specimen[0].reference !== "") {
+                data[req_class][request.id]["specimen"] = request.specimen[0].reference.split("/")[1];
+            }
         }
     });
     return data;
@@ -103,78 +136,96 @@ function getObservations(obs, _) {
     data["values"] = {};
     var interpr_code = {"R": "resistent", "S": "anfällig"};
     obs.forEach(function (ob) {
-        if ("basedOn" in ob && ob.basedOn[0].reference.startsWith("ServiceRequest/")) {
-            if (ob.basedOn[0].reference.split("/")[1] in data["mibiRequest"]) {
-                if ("interpretation" in ob && ob.interpretation.length) {  // observation is an abgResult
-                    interpr = ob.interpretation[0].coding[0].code;
-                    data["abgObservations"][ob.id] = {
-                        "id": ob.id,
-                        "code": ob.code.coding[0].code,
-                        "date": getDateRepresentation(ob.effectiveDateTime),
-                        "encounter": ob.encounter.reference.split("/")[1],
-                        "mibiObservation": ob.derivedFrom[0].reference.split("/")[1],
-                        "serviceRequest": ob.basedOn[0].reference.split("/")[1],
-                        "interpretation": interpr in Object.keys(interpr_code) ? interpr_code[interpr] : interpr
+        let id = ob?.id;
+        let validDate = Date.parse(ob?.effectiveDateTime);
+        let encounter = ob?.encounter?.reference?.split("/")[1];
+        if (checkNotNullNotEmpty(id) && validDate && encounter in data["encounter"] && hasCoding(ob.code)) {
+            let code = ob.code.coding[0].code;
+            let display = ob.code.coding[0].display;
+            if ("basedOn" in ob && ob.basedOn.length && ob.basedOn[0]?.reference?.startsWith("ServiceRequest/")) {
+                let order = ob.basedOn[0].reference.split("/")[1];
+                if (order in data["mibiRequest"]) {
+                    if ("interpretation" in ob && ob.interpretation.length) {  // observation is an abgResult
+                        if ("derivedFrom" in ob && ob.derivedFrom.length) {
+                            let interpr = ob.interpretation[0]?.coding[0]?.code;
+                            data["abgObservations"][ob.id] = {
+                                "id": id,
+                                "code": !!code ? code : "",
+                                "date": getDateRepresentation(ob.effectiveDateTime),
+                                "encounter": encounter,
+                                "mibiObservation": ob.derivedFrom[0]?.reference?.split("/")[1],
+                                "serviceRequest": order,
+                                "interpretation": interpr in interpr_code ? interpr_code[interpr] : interpr
+                            }
+                        }
+                    } else {  // observation is a mibiResult
+                        data["mibiObservations"][ob.id] = {
+                            "id": id,
+                            "code": !!code ? code : "",
+                            "system": !!ob.code.coding[0].system ? ob.code.coding[0].system : "",
+                            "version": !!ob.code.coding[0].version ? ob.code.coding[0].version : "",
+                            "display": !!display ? display : "",
+                            "date": getDateRepresentation(ob.effectiveDateTime),
+                            "encounter": encounter,
+                            "abgObservations": "hasMember" in ob ? ob.hasMember.map(o => o?.reference?.split("/")[1]) : [],
+                            "serviceRequest": order
+                        }
                     }
-                } else {  // observation is a mibiResult
-                    data["mibiObservations"][ob.id] = {
-                        "id": ob.id,
-                        "code": ob.code.coding[0].code,
-                        "system": ob.code.coding[0].system,
-                        "version": ob.code.coding[0].version,
-                        "display": ob.code.coding[0].display,
+                } else if (order in data["labRequest"] && (checkNotNullNotEmpty(display) || checkNotNullNotEmpty(code)) && parseFloat(ob.valueQuantity?.value)) {  // observation is a labResult
+                    data["labObservations"][ob.id] = {
+                        "code": !!code ? code : "",
+                        "system": !!ob.code.coding[0].system ? ob.code.coding[0].system : "",
+                        "version": !!ob.code.coding[0].version ? ob.code.coding[0].version : "",
+                        "display": !!display ? display : "",
                         "date": getDateRepresentation(ob.effectiveDateTime),
-                        "encounter": ob.encounter.reference.split("/")[1],
-                        "abgObservations": "hasMember" in ob ? ob.hasMember.map(o => o.reference.split("/")[1]) : [],
-                        "serviceRequest": ob.basedOn[0].reference.split("/")[1]
+                        "encounter": encounter,
+                        "serviceRequest": order,
+                        "value": ob.valueQuantity.value,
+                        "range": ob.code.coding[0].code + "-" + ob.code.coding[0].system + "-" + ob.code.coding[0].version
                     }
+                    let refRange = ("referenceRange" in ob && ob.referenceRange.length) ? ob.referenceRange[0] : null;
+                    addRangeValue(data["labObservations"][ob.id]["range"], ob.valueQuantity.unit, refRange);
                 }
-            } else {  // observation is a labResult
-                data["labObservations"][ob.id] = {
-                    "code": ob.code.coding[0].code,
-                    "system": ob.code.coding[0].system,
-                    "version": ob.code.coding[0].version,
-                    "display": ob.code.coding[0].display,
+            } else if ((checkNotNullNotEmpty(display) || checkNotNullNotEmpty(code)) && parseFloat(ob.valueQuantity?.value)) {  // observation is a vital-sign Observation
+                data["observations"][ob.id] = {
+                    "code": !!code ? code : "",
+                    "system": !!ob.code.coding[0].system ? ob.code.coding[0].system : "",
+                    "version": !!ob.code.coding[0].version ? ob.code.coding[0].version : "",
+                    "display": !!display ? display : "",
                     "date": getDateRepresentation(ob.effectiveDateTime),
-                    "encounter": ob.encounter.reference.split("/")[1],
-                    "serviceRequest": ob.basedOn[0].reference.split("/")[1],
+                    "encounter": encounter,
                     "value": ob.valueQuantity.value,
                     "range": ob.code.coding[0].code + "-" + ob.code.coding[0].system + "-" + ob.code.coding[0].version
                 }
-                addRangeValue(data["labObservations"][ob.id]["range"], ob.valueQuantity.unit, ob.referenceRange[0]);
+                addRangeValue(data["observations"][ob.id]["range"], "valueQuantity" in ob ? ob.valueQuantity.unit : "");
             }
-        } else {  // observation is a vital-sign Observation
-            data["observations"][ob.id] = {
-                "code": ob.code.coding[0].code,
-                "system": ob.code.coding[0].system,
-                "version": ob.code.coding[0].version,
-                "display": ob.code.coding[0].display,
-                "date": getDateRepresentation(ob.effectiveDateTime),
-                "encounter": ob.encounter.reference.split("/")[1],
-                "value": ob.valueQuantity.value,
-                "range": ob.code.coding[0].code + "-" + ob.code.coding[0].system + "-" + ob.code.coding[0].version
-            }
-            addRangeValue(data["observations"][ob.id]["range"], ob.valueQuantity.unit);
         }
     });
 }
 
-function getMedicationRequest(medications) {
+function getMedicationRequest(encounters, medications) {
     data["medication"] = {};
     medications.forEach(function (medication) {
-        let startDate = medication.resource.authoredOn;
-        data["medication"][medication.resource.id] = {
-            "date": getDateRepresentation(startDate),
-            "end": getDateRepresentation(new Date(new Date(startDate).setDate(new Date(startDate).getDate() + medication.resource.dispenseRequest.expectedSupplyDuration.value)), false),
-            "encounter": medication.resource.encounter.reference.split("/")[1],
-            "code": medication.resource.contained[0].code.coding[0].code,
-            "system": medication.resource.contained[0].code.coding[0].system,
-            "version": medication.resource.contained[0].code.coding[0].version,
-            "display": medication.resource.contained[0].code.coding[0].display,
-            "duration_in_d": medication.resource.dispenseRequest.expectedSupplyDuration.value,
-            "dose": medication.resource.dosageInstruction[0].doseAndRate.map(e => e.doseQuantity["value"] + " " + e.doseQuantity["unit"]).sort().join("/"),
-            "application": medication.resource.dosageInstruction[0].route,
-            "interval_h": medication.resource.dosageInstruction[0].timing.repeat.period
+        let startDate = medication?.authoredOn;
+        let encounter = medication?.encounter?.reference?.split("/")[1]
+        if (encounter in encounters && Date.parse(startDate) && checkNotNullNotEmpty(medication.id) && checkNotNullNotEmpty(medication.dispenseRequest?.expectedSupplyDuration?.value) && "contained" in medication && medication.contained.length) {  // require valid start date and duration
+            let start = new Date(startDate.split("+")[0]);
+            let code = medication.contained[0].code;
+            let coding = hasCoding(medication.contained[0].code);
+            let dosage = "dosageInstruction" in medication && medication.dosageInstruction.length;
+            data["medication"][medication.id] = {
+                "date": getDateRepresentation(startDate),
+                "end": getDateRepresentation(new Date(new Date(start).setDate(new Date(start).getDate() + medication.dispenseRequest.expectedSupplyDuration.value)), false),
+                "encounter": encounter,
+                "code": (coding && !!code.coding[0].code) ? code.coding[0].code : "",
+                "system": (coding && !!code.coding[0].system) ? code.coding[0].system : "",
+                "version": (coding && !!code.coding[0].version) ? code.coding[0].version : "",
+                "display": (coding && !!code.coding[0].display) ? code?.coding[0].display : "",
+                "duration_in_d": medication.dispenseRequest.expectedSupplyDuration.value,
+                "dose": dosage ? medication.dosageInstruction[0].doseAndRate?.map(e => e?.doseQuantity["value"] + " " + e?.doseQuantity["unit"]).sort().join("/") : "",
+                "application": dosage ? medication.dosageInstruction[0].route : "",
+                "interval_h": dosage ? medication.dosageInstruction[0].timing?.repeat?.period : ""
+            }
         }
     });
 }
@@ -182,15 +233,20 @@ function getMedicationRequest(medications) {
 function getDiagnosticReport(diagnostics) {
     data["diagnostics"] = {};
     diagnostics.forEach(function (dia) {
-        data["diagnostics"][dia.resource.id] = {
-            "serviceRequest": dia.resource.basedOn[0].reference.split("/")[1],
-            "code": dia.resource.code.coding[0].code,
-            "system": dia.resource.code.coding[0].system,
-            "version": dia.resource.code.coding[0].version,
-            "display": dia.resource.code.coding[0].display,
-            "encounter": dia.resource.encounter.reference.split("/")[1],
-            "result": dia.resource.result[0].reference.split("/")[1],
-            "specimen": dia.resource.specimen[0].reference.split("/")[1]
+        if (checkNotNullNotEmpty(dia.id) && (dia.encounter?.reference?.split("/")[1] in data["encounter"]) && hasCoding(dia.code)) {
+            let result = "result" in dia && dia.result.length;
+            let specimen = "specimen" in dia && dia.specimen.length;
+            let basedOn = "basedOn" in dia && dia.basedOn.length;
+            data["diagnostics"][dia.id] = {
+                "serviceRequest": (basedOn && !!dia.basedOn[0].reference?.split("/")[1]) ? dia.basedOn[0].reference?.split("/")[1] : "",
+                "code": dia.code.coding[0].code,
+                "system": dia.code.coding[0].system,
+                "version": dia.code.coding[0].version,
+                "display": dia.code.coding[0].display,
+                "encounter": dia.encounter.reference.split("/")[1],
+                "result": (result && !!dia.result[0].reference?.split("/")[1]) ? dia.result[0].reference?.split("/")[1] : "",
+                "specimen": (specimen && !!dia.specimen[0].reference.split("/")[1]) ? dia.specimen[0].reference?.split("/")[1] : ""
+            }
         }
     });
 }
@@ -198,76 +254,68 @@ function getDiagnosticReport(diagnostics) {
 function getSpecimen(specimen) {
     data["specimen"] = {};
     specimen.forEach(function (spec) {
-        data["specimen"][spec.resource.id] = {
-           "serviceRequest": spec.resource.request[0].reference.split("/")[1],
-           "code": spec.resource.type.coding[0].code,
-           "system": spec.resource.type.coding[0].system,
-           "version": spec.resource.type.coding[0].version,
-           "display": spec.resource.type.coding[0].display
-        };
+        let order = ("request" in spec && spec.request.length) ? spec.request[0].reference?.split("/")[1] : "";
+        if (checkNotNullNotEmpty(order) && hasCoding(spec.type)) {
+            data["specimen"][spec.id] = {
+                "serviceRequest": order,
+                "code": spec.type?.coding[0].code,
+                "system": spec.type?.coding[0].system,
+                "version": spec.type?.coding[0].version,
+                "display": spec.type?.coding[0].display
+            };
+        }
     });
 }
 
 function requestQuery(params) {
     var query = new URLSearchParams();
-    for (var key in params) {
+    for (let key in params) {
         query.set(key, params[key]);
     }
     return query;
 }
 
 FHIR.oauth2.ready().then(function (client) {
-    var patientQuery = client.patient.read();
-    var encounterQuery = client.request("Encounter?" + requestQuery({"patient": client.patient.id}), {
+    let params = requestQuery({"patient": client.patient.id});
+    let patientQuery = client.patient.read();
+    let encounterQuery = client.request("Encounter?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var conditionQuery = client.request("Condition?" + requestQuery({"patient": client.patient.id}), {
+    let conditionQuery = client.request("Condition?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var serviceRequestQuery = client.request("ServiceRequest?" + requestQuery({"patient": client.patient.id}), {
+    let serviceRequestQuery = client.request("ServiceRequest?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var observationQuery = client.request("Observation?" + requestQuery({"patient": client.patient.id}), {
+    let observationQuery = client.request("Observation?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var medicationRequestQuery = client.request("MedicationRequest?", requestQuery({"patient": client.patient.id}), {
+    let medicationRequestQuery = client.request("MedicationRequest?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var diagnosticReportQuery = client.request("DiagnosticReport?", requestQuery({"patient": client.patient.id}), {
+    let diagnosticReportQuery = client.request("DiagnosticReport?" + params, {
         pageLimit: 0,
         flat: true
     });
-    var specimenQuery = client.request("Specimen?", requestQuery({"patient": client.patient.id}), {
+    let specimenQuery = client.request("Specimen?" + params, {
         pageLimit: 0,
         flat: true
     });
 
     return Promise.all([patientQuery, encounterQuery, conditionQuery, serviceRequestQuery, observationQuery, medicationRequestQuery, diagnosticReportQuery, specimenQuery]).then(function (res_data) {
         getPatient(res_data[0]);
-        getEncountersAndConditions(res_data[1], res_data[2]);
-        getObservations(res_data[4], getServiceRequests(res_data[3]));
-        if ("entry" in res_data[5]) {
-            getMedicationRequest(res_data[5].entry);
-        } else {
-            data["medication"] = {};
-        }
-        if ("entry" in res_data[6]) {
-            getDiagnosticReport(res_data[6].entry);
-        } else {
-            data["diagnostics"] = {};
-        }
-        if ("entry" in res_data[7]) {
-            getSpecimen(res_data[7].entry);
-        } else {
-            data["specimen"] = {};
-        }
+        let encounters = getEncountersAndConditions(res_data[1], res_data[2]);
+        getObservations(res_data[4], getServiceRequests(encounters, res_data[3]));
+        getMedicationRequest(encounters, res_data[5]);
+        getDiagnosticReport(res_data[6]);
+        getSpecimen(res_data[7]);
         console.log(data);
-    }).then(function() {
+    }).then(function () {
         addDiagram();
         tooltip = createTooltip();
         displayData();

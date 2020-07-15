@@ -1,1 +1,1 @@
-# KomplexPraktikum2SS2020
+# Visualisierung-medizinischer-Daten
